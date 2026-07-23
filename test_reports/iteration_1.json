@@ -1,0 +1,32 @@
+{
+  "summary": "First e2e test of CodeGanak v0.1 MVP. Backend: 17/17 pytest tests pass (auth, repo import, indexing, tree, file content, semantic search, SSE chat, chat history, docs generation, delete). Frontend: landing, login, dashboard, github import (queued->ready), repo detail with all 5 tabs (Overview, Files, Chat, Search, Docs) all functional. Streaming chat with citations works. File tree loads and displays content. Semantic search returns results and result click opens file.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard repo card", "issue": "data-testid='repo-status-badge' is NOT wired on dashboard repo cards - it only exists on RepositoryDetail page. Testing agents polling status via dashboard testid will find zero elements even though 'READY' text is visible on cards.", "selector": "[data-testid=repo-status-badge]", "priority": "LOW"},
+      {"component": "CommandPalette", "issue": "Meta+K keyboard shortcut did not open the command palette dialog in headless Chromium. May need Ctrl+K on non-Mac or handler is only bound to metaKey. Also visible 'Jump to... K' UI button suggests click still works.", "selector": "[data-testid=command-palette-dialog]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All dialogs", "issues": ["a11y console warnings: 'DialogContent requires a DialogTitle' and 'Missing Description or aria-describedby' from Radix Dialog usage. Non-blocking but should wrap hidden titles with VisuallyHidden."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(Optional) Add data-testid='repo-status-badge' to Dashboard repo card badges for polling in tests",
+    "(Optional) Wrap Radix DialogContent bodies with a VisuallyHidden DialogTitle for a11y",
+    "(Optional) Bind command-palette shortcut to both metaKey and ctrlKey"
+  ],
+  "critical_code_review_comments": [
+    "server.py get_stats returns raw symbol dicts including possibly {_id} - it uses projection {_id: 0} so safe.",
+    "Multiple test-run repos accumulate on demo user's dashboard (4 cards seen). Consider a cleanup script or admin route.",
+    "Chat SSE persists assistant message in finally block even on error - good. But 'citations' is captured only if event arrived before delta; if order changes citations may be []."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/backend/tests/__init__.py"],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "test_credentials": "demo@codeganak.dev / password123 (works)",
+  "seed_data_creation": "Created test users via /api/auth/register with test_<uuid>@codeganak.dev prefix; imported uvicorn-gunicorn-fastapi-docker repo (deleted at end of test class).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend fully green. Frontend flows all functional. Only minor test-id gap on Dashboard status badge and Meta+K shortcut. Reuse /app/backend/tests/backend_test.py for regression."
+}
