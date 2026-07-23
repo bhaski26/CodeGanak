@@ -178,7 +178,10 @@ export default function RepositoryDetail({ onOpenCommand }) {
           </div>
           <div className="flex items-center gap-3">
             {repo.embedding_ready && (
-              <span className="text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-sm bg-accent/10 text-accent border border-accent/30 hidden sm:inline-flex items-center gap-1">
+              <span
+                className="text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-sm bg-accent/10 text-accent border border-accent/30 hidden sm:inline-flex items-center gap-1"
+                data-testid="repo-vectors-badge"
+              >
                 <Sparkles className="w-2.5 h-2.5" /> vectors
               </span>
             )}
