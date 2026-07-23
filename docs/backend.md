@@ -2,251 +2,275 @@
 
 ## Purpose
 
-This document provides a detailed overview of the backend architecture of **CodeGanak**. It explains how the backend is organized, how requests are processed, the responsibilities of each service, and the design principles followed throughout the implementation.
+This document provides a high-level overview of the CodeGanak backend architecture. It explains how requests move through the system, the responsibilities of each backend module, and the design decisions behind the current implementation.
 
-The goal of this document is to help developers understand the backend without needing to inspect every source file.
+This document is intended for contributors, reviewers, and developers who want to understand the backend before making changes.
 
 ---
 
 # Backend Overview
 
-The backend is implemented using **FastAPI** and follows a service-oriented architecture. The API layer is intentionally kept lightweight, while business logic is delegated to dedicated service modules.
+The CodeGanak backend is built using **FastAPI** and follows a modular service-oriented architecture. The application exposes REST APIs for authentication, workspace management, repository ingestion, AI-powered repository understanding, semantic search, and architecture visualization.
 
-This separation improves maintainability, testing, and scalability.
-
-The backend is responsible for:
-
-* User authentication
-* Workspace management
-* Repository management
-* AI request orchestration
-* Graph generation
-* Data persistence
-* API communication
+Rather than placing all business logic inside API endpoints, the backend delegates responsibilities to dedicated service modules. This keeps request handlers lightweight while making the business logic easier to maintain and extend.
 
 ---
 
-# Backend Philosophy
+# Design Goals
 
-The backend follows several key principles:
+The backend was designed with the following objectives:
 
-* Thin API layer
-* Service-oriented business logic
-* Reusable components
-* Clear separation of concerns
-* Structured error handling
-* Extensible architecture
+* Modular service separation
+* Clear responsibility boundaries
+* AI-first repository analysis
+* Stateless API endpoints using JWT authentication
+* Scalable service organization
+* Easy future expansion
 
-Rather than embedding application logic inside API endpoints, each feature is implemented within an independent service.
+---
+
+# High-Level Architecture
+
+```mermaid
+flowchart TD
+
+Client --> FastAPI
+
+FastAPI --> Authentication
+FastAPI --> Workspace
+FastAPI --> Repository
+FastAPI --> AI
+FastAPI --> Graph
+
+Authentication --> MongoDB
+Workspace --> MongoDB
+Repository --> MongoDB
+Graph --> MongoDB
+AI --> MongoDB
+
+AI --> FastEmbed
+AI --> Claude
+```
+
+---
+
+# Layered Architecture
+
+The backend follows a layered design:
+
+```
+Client
+   │
+   ▼
+FastAPI API Layer (server.py)
+   │
+   ▼
+Business Services
+├── Authentication
+├── Workspace
+├── Repository
+├── AI
+└── Graph
+   │
+   ▼
+Database Layer
+```
+
+Each layer has a clearly defined responsibility, reducing coupling between modules.
+
+---
+
+# Core Modules
+
+## server.py
+
+The application's entry point.
+
+Responsibilities include:
+
+* Initializing the FastAPI application
+* Configuring middleware (such as CORS)
+* Registering API routes
+* Validating incoming requests
+* Coordinating calls to backend services
+* Returning API responses
+
+Business logic is intentionally delegated to dedicated service modules rather than implemented directly inside route handlers.
+
+---
+
+## auth.py
+
+Responsible for authentication and authorization.
+
+Key responsibilities:
+
+* Password hashing with bcrypt
+* Password verification
+* JWT creation
+* User authentication
+* Current-user resolution for protected endpoints
+
+Authentication is stateless, allowing APIs to scale without server-side session storage.
+
+---
+
+## workspace_service.py
+
+Handles collaborative workspace management.
+
+Responsibilities include:
+
+* Workspace creation
+* Membership management
+* Invitations
+* Role handling
+* Workspace access validation
+
+This service acts as the collaboration layer of the platform.
+
+---
+
+## repo_service.py
+
+Responsible for repository ingestion and processing.
+
+Current capabilities include:
+
+* ZIP repository import
+* GitHub repository import
+* Repository indexing
+* File tree generation
+* File retrieval
+
+This service forms the entry point for repository analysis.
+
+---
+
+## ai_service.py
+
+The intelligence layer of CodeGanak.
+
+Responsibilities include:
+
+* Repository-aware AI chat
+* Semantic search
+* Embedding generation
+* Documentation generation
+* LLM interaction
+
+The service combines retrieval with AI reasoning to answer repository-specific questions.
+
+---
+
+## graph_service.py
+
+Responsible for software structure visualization.
+
+Responsibilities include:
+
+* Dependency graph generation
+* Architecture graph construction
+* Relationship extraction
+
+This service provides structured representations of repository components.
+
+---
+
+## db.py
+
+Provides database connectivity and shared database access for backend services.
+
+Keeping database configuration isolated simplifies maintenance and future migrations.
+
+---
+
+## models.py
+
+Contains shared application models.
+
+These models define:
+
+* Request payloads
+* Response schemas
+* Domain entities
+
+Using centralized models keeps API contracts consistent across the application.
 
 ---
 
 # Request Lifecycle
 
-A request moves through the backend using the following workflow:
+A typical request follows this path:
 
-```text
-Client
-   │
-   ▼
-FastAPI Router
-   │
-   ▼
-Authentication
-   │
-   ▼
-Validation
-   │
-   ▼
-Business Service
-   │
-   ▼
-Database
-   │
-   ▼
-Response Model
-   │
-   ▼
-Client
-```
+1. Client sends an HTTP request.
+2. FastAPI validates the request.
+3. Authentication is performed if required.
+4. The request is delegated to the appropriate service.
+5. The service performs business logic.
+6. Database operations are executed if needed.
+7. A structured response is returned to the client.
 
-Each stage has a clearly defined responsibility, making the request lifecycle predictable and easier to debug.
+This separation allows business logic to evolve independently from API routing.
 
 ---
 
-# Core Services
+# Security
 
-## Authentication Service
+Current security mechanisms include:
 
-Responsible for:
+* JWT-based authentication
+* Password hashing using bcrypt
+* Protected endpoints through dependency injection
+* Environment-based secret management
 
-* User registration
-* User login
-* Password hashing
-* JWT generation
-* User verification
-* Access control
-
-The authentication layer protects all secured endpoints and ensures that only authorized users can access workspace resources.
-
----
-
-## Repository Service
-
-The Repository Service manages software repositories within the platform.
-
-Responsibilities include:
-
-* Repository creation
-* Repository updates
-* Repository deletion
-* Metadata management
-* Repository ownership
-* Repository retrieval
-
-Future enhancements include repository cloning, indexing, and automated analysis.
-
----
-
-## Workspace Service
-
-Workspaces provide logical separation between users and repositories.
-
-Responsibilities include:
-
-* Workspace creation
-* Workspace management
-* Repository organization
-* Access isolation
-
-This abstraction prepares the platform for future collaboration features.
-
----
-
-## AI Service
-
-The AI Service coordinates all intelligent interactions with software repositories.
-
-Current responsibilities include:
-
-* AI request handling
-* Prompt orchestration
-* Response generation
-* Model communication
-
-The service is designed to evolve into a repository-aware reasoning engine using Retrieval-Augmented Generation (RAG).
-
----
-
-## Graph Service
-
-The Graph Service is responsible for representing relationships within a repository.
-
-Planned responsibilities include:
-
-* Dependency graphs
-* Module relationships
-* Call graphs
-* Architecture visualization
-* Knowledge graph generation
-
-Separating graph operations into an independent service keeps repository management independent from visualization logic.
-
----
-
-# API Layer
-
-The API layer performs only four responsibilities:
-
-* Route incoming requests
-* Validate request data
-* Authenticate users
-* Delegate work to services
-
-Business rules remain inside the service layer.
-
-This design minimizes duplication and improves testability.
-
----
-
-# Database Layer
-
-The backend currently uses MongoDB as its primary datastore.
-
-Typical entities include:
-
-* Users
-* Workspaces
-* Repositories
-
-The data layer is abstracted behind services to avoid tight coupling between business logic and database operations.
-
----
-
-# Error Handling
-
-The backend follows a structured error handling strategy.
-
-Errors are categorized into:
-
-* Validation errors
-* Authentication errors
-* Authorization errors
-* Resource not found
-* Internal server errors
-
-Each error returns a consistent response format to simplify frontend integration.
-
----
-
-# Security Considerations
-
-The backend incorporates several security mechanisms:
-
-* JWT authentication
-* Password hashing
-* Protected API endpoints
-* Environment-based configuration
-* Request validation
-
-Future improvements include refresh tokens, role-based access control, rate limiting, and audit logging.
+These mechanisms provide a solid foundation for secure API access.
 
 ---
 
 # Scalability
 
-The backend has been designed with future growth in mind.
+The current modular structure supports future growth by allowing new services to be introduced without significantly affecting existing modules.
 
-Examples include:
+Potential future improvements include:
 
-* Modular service organization
-* Independent business logic
-* Stateless request handling
-* Background task support
-* Future asynchronous repository processing
-
-These design choices allow new capabilities to be added without requiring major architectural changes.
+* Dedicated FastAPI routers
+* Background task processing
+* Repository processing queues
+* Caching layer
+* Observability and metrics
 
 ---
 
-# Future Enhancements
+# Code References
 
-The backend architecture provides a strong foundation for several advanced capabilities, including:
-
-* Repository parsing
-* Tree-sitter integration
-* Semantic search
-* Vector databases
-* Knowledge graph generation
-* AI-powered code analysis
-* Background processing
-* Repository indexing
-* Intelligent documentation generation
-
-These features can be integrated incrementally while preserving the existing architecture.
+* `backend/server.py`
+* `backend/auth.py`
+* `backend/workspace_service.py`
+* `backend/repo_service.py`
+* `backend/ai_service.py`
+* `backend/graph_service.py`
+* `backend/db.py`
+* `backend/models.py`
 
 ---
 
-# Conclusion
+# Design Decisions
 
-The backend of CodeGanak is designed to be modular, maintainable, and extensible. By separating routing, business logic, and data access into clearly defined layers, the platform establishes a scalable foundation capable of supporting increasingly sophisticated AI-powered software engineering workflows.
+* **Service-oriented organization** keeps business logic separate from API routing.
+* **JWT authentication** enables stateless request handling.
+* **Dedicated AI service** isolates AI functionality from core application logic.
+* **Centralized models** ensure consistent request and response contracts.
+* **Modular backend layout** makes the project easier to extend and maintain.
+
+---
+
+# Future Improvements
+
+* Split `server.py` into dedicated route modules as the API surface grows.
+* Introduce structured logging and request tracing.
+* Add centralized exception handling.
+* Expand automated testing coverage.
+* Introduce dependency injection for service implementations.
+
+This document serves as the architectural foundation for the remaining backend documentation.
