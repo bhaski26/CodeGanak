@@ -2,8 +2,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { Terminal, Command, LogOut, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getUser, clearAuth } from "@/lib/auth";
+import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 
-export default function AppHeader({ onOpenCommand, right = null }) {
+export default function AppHeader({ onOpenCommand, right = null, showWorkspace = true }) {
   const navigate = useNavigate();
   const user = getUser();
 
@@ -31,6 +32,8 @@ export default function AppHeader({ onOpenCommand, right = null }) {
         </Link>
 
         <div className="flex-1" />
+
+        {showWorkspace && user && <WorkspaceSwitcher />}
 
         <button
           onClick={onOpenCommand}

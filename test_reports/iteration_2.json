@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 2 e2e review of CodeGanak (Workspaces + RBAC + Invites, Architecture/Dependency Graph, real vector embeddings). Backend: 18/18 pytest tests pass (workspace list/create/delete, personal-ws guard, invite lifecycle, preview no-auth, accept as new user, role promote+non-owner cannot promote to owner, self-leave, remove non-owner, cascade delete, GitHub import scoped to workspace_id, /repositories filtered by workspace_id, graph module + file granularity, embeddings-mode search with 'render' / '_async_render' in top hits). Frontend: login->dashboard shows 'My workspace' + OWNER role in switcher, create-workspace flow works, workspace settings shows demo owner + creates invite URL under /invite/<token>, unauth /invite/:token shows preview and Accept redirects to /login, repository Graph tab renders React Flow canvas with nodes, granularity toggle works, VECTORS badge visible when embedding_ready, Search tab shows '· RANKED BY SEMANTIC EMBEDDING SIMILARITY' label under embeddings mode.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "WorkspaceSwitcher trigger", "issue": "On initial cold render, switcher briefly shows generic 'Workspace' text without role because workspaces store is still loading. Once refresh() completes it correctly shows current.name + role. Not a bug in flows but can flake tests that don't wait ~2s post-navigation.", "selector": "[data-testid=workspace-switcher-trigger]", "priority": "LOW"},
+      {"component": "VECTORS badge", "issue": "No data-testid on the 'vectors' badge next to status badge — testing agents must fall back to text match. Recommend adding data-testid='repo-vectors-badge'.", "selector": "span:has-text('vectors')", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard header for non-personal workspace", "issues": ["Non-personal workspace card shows 'Shared workspace · 0 members' even when only the owner exists — member_count should never be 0. Not blocking, cosmetic."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter2_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Add data-testid='repo-vectors-badge' to the VECTORS pill in RepositoryDetail header",
+    "(Optional) Fix workspace member_count display for freshly created workspaces (should be at least 1 = owner)",
+    "(Optional) Show a skeleton in WorkspaceSwitcher until initial refresh() completes to avoid the flicker of 'Workspace' + empty role"
+  ],
+  "critical_code_review_comments": [
+    "server.py:151 self-leave check uses target_user_id == user.id but then calls remove_member for the else branch which correctly forbids owner removal (workspace_service.remove_member). Good.",
+    "workspace_service.accept_invite is idempotent: existing member preserves role — good.",
+    "get_workspaces implicitly calls ensure_personal_workspace via list_workspaces_for_user — but ensure_personal_workspace also migrates legacy repos every call. Cheap (2 tiny queries) but is O(N) DB calls on hot paths (login, /me, /workspaces, /repositories). Consider caching a boolean flag on user doc.",
+    "server.py delete_repository authorizes with min_role='admin' — good.",
+    "graph_service.build_graph is used with granularity='module'|'file' and returns stats.cycle_count via Tarjan SCC — good coverage."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "demo@codeganak.dev / password123 (works). Invitee users are created on-the-fly under test_invitee_<uuid>@codeganak.dev / password123.",
+  "seed_data_creation": "Created ephemeral test workspaces prefixed TEST_ws_ and TEST_team_ (deleted at end of test). Imported https://github.com/psf/requests-html — ready in ~5-10s, embedding_ready in ~10-20s. Repo left in demo user's 'My workspace' at end of frontend run (safe for reuse).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both backend_test.py (iter1) and test_iteration2.py (iter2) are safe regression suites. Run with `-n 0` because pytest.ini pins xdist=2 and the invite-flow tests share class-level state that must stay on one worker. On fresh login the workspace switcher may show 'Workspace' for ~1-2s until zustand store hydrates — wait ~2s before asserting the role text. Legacy repos on demo user are auto-migrated into personal 'My workspace' on any workspace-touching endpoint call.",
+  "rca of the issue": "N/A — no issues to RCA."
+}

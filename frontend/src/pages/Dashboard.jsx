@@ -13,6 +13,7 @@ import {
   Boxes,
   Zap,
   Clock,
+  Sparkles as SparklesIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import AppHeader from "@/components/AppHeader";
 import { api } from "@/lib/api";
+import { useWorkspaces } from "@/lib/workspaces";
 import { DASHBOARD, IMPORT } from "@/constants/testIds";
 
 const STATUS_META = {
@@ -40,6 +42,7 @@ const STATUS_META = {
 };
 
 export default function Dashboard({ onOpenCommand }) {
+  const { currentId, refresh: refreshWs, workspaces } = useWorkspaces();
   const [repos, setRepos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
@@ -47,30 +50,43 @@ export default function Dashboard({ onOpenCommand }) {
   const [githubUrl, setGithubUrl] = useState("");
   const [file, setFile] = useState(null);
 
+  const currentWs = workspaces.find((w) => w.id === currentId);
+
   const fetchRepos = useCallback(async () => {
+    if (!currentId) return;
     try {
-      const { data } = await api.get("/repositories");
+      const { data } = await api.get("/repositories", {
+        params: { workspace_id: currentId },
+      });
       setRepos(data || []);
     } catch (e) {
       toast.error("Failed to load repositories");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentId]);
+
+  useEffect(() => {
+    refreshWs().catch(() => {});
+  }, [refreshWs]);
 
   useEffect(() => {
     fetchRepos();
     const openHandler = () => setImportOpen(true);
     window.addEventListener("codeganak:open-import", openHandler);
     const interval = setInterval(() => {
-      // Poll to reflect background indexing
-      api.get("/repositories").then((r) => setRepos(r.data || [])).catch(() => {});
+      if (currentId) {
+        api
+          .get("/repositories", { params: { workspace_id: currentId } })
+          .then((r) => setRepos(r.data || []))
+          .catch(() => {});
+      }
     }, 4000);
     return () => {
       window.removeEventListener("codeganak:open-import", openHandler);
       clearInterval(interval);
     };
-  }, [fetchRepos]);
+  }, [fetchRepos, currentId]);
 
   const importGithub = async () => {
     if (!githubUrl.trim()) return;
@@ -78,6 +94,7 @@ export default function Dashboard({ onOpenCommand }) {
     try {
       const { data } = await api.post("/repositories/import-github", {
         github_url: githubUrl.trim(),
+        workspace_id: currentId,
       });
       toast.success(`Import queued: ${data.name}`);
       setGithubUrl("");
@@ -95,6 +112,7 @@ export default function Dashboard({ onOpenCommand }) {
     setBusy(true);
     const form = new FormData();
     form.append("file", file);
+    if (currentId) form.append("workspace_id", currentId);
     try {
       const { data } = await api.post("/repositories/upload", form, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -133,10 +151,12 @@ export default function Dashboard({ onOpenCommand }) {
           <div>
             <div className="tiny-label text-accent">workspace</div>
             <h1 className="mt-2 font-display font-black text-4xl tracking-tighter">
-              Your repositories
+              {currentWs?.name || "Your workspace"}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground max-w-lg">
-              Import a repository to index its architecture, symbols and APIs.
+              {currentWs?.is_personal
+                ? "Your personal workspace. Import a repository to index its architecture, symbols and APIs."
+                : `Shared workspace · ${currentWs?.member_count || 0} members. Everything you index is visible to teammates.`}
             </p>
           </div>
           <Dialog open={importOpen} onOpenChange={setImportOpen}>

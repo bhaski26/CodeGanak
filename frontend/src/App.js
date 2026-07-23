@@ -8,6 +8,8 @@ import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
 import RepositoryDetail from "@/pages/RepositoryDetail";
+import WorkspaceSettings from "@/pages/WorkspaceSettings";
+import AcceptInvite from "@/pages/AcceptInvite";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import CommandPalette from "@/components/CommandPalette";
 
@@ -32,6 +34,7 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/invite/:token" element={<AcceptInvite />} />
           <Route
             path="/dashboard"
             element={
@@ -45,6 +48,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <RepositoryDetail onOpenCommand={() => setCmdOpen(true)} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspaces/:workspaceId/settings"
+            element={
+              <ProtectedRoute>
+                <WorkspaceSettings onOpenCommand={() => setCmdOpen(true)} />
               </ProtectedRoute>
             }
           />

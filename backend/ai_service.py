@@ -1,35 +1,113 @@
-"""AI service: repo-aware chat + semantic search.
+"""AI service: embeddings-powered semantic search + repo-aware Claude chat.
 
-Uses:
-  - emergentintegrations.LlmChat with Anthropic Claude Sonnet 4.5 for chat.
-  - Lightweight BM25-style scoring over indexed code symbols/files for
-    retrieval (works fully in-memory, no external vector DB required).
+- Embeddings via `fastembed` (BAAI/bge-small-en-v1.5) running locally through
+  ONNX runtime — real semantic vectors, no network dependency.
+- Chat via emergentintegrations.LlmChat with Claude Sonnet 4.5.
+- Falls back to BM25 automatically if the embedder is unavailable.
 """
 from __future__ import annotations
 
-import os
+import asyncio
 import math
+import os
 import re
+import threading
 from collections import Counter
-from typing import List, Dict, Optional, AsyncIterator, Tuple
+from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
 
 EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+
 CHAT_MODEL_PROVIDER = "anthropic"
 CHAT_MODEL_NAME = "claude-sonnet-4-5-20250929"
+
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+EMBEDDING_DIM = 384
+_EMBED_BATCH_SIZE = 128
+_EMBED_MAX_CHARS = 2048
+
+_embedder = None
+_embedder_lock = threading.Lock()
+_embed_enabled = True
+
+
+def _get_embedder():
+    """Lazy-initialize the ONNX embedder (heavy warmup happens only once)."""
+    global _embedder, _embed_enabled
+    if _embedder is not None or not _embed_enabled:
+        return _embedder
+    with _embedder_lock:
+        if _embedder is None and _embed_enabled:
+            try:
+                from fastembed import TextEmbedding
+                _embedder = TextEmbedding(model_name=EMBEDDING_MODEL)
+                print(f"[embed] loaded {EMBEDDING_MODEL}")
+            except Exception as e:
+                print(f"[embed] failed to load embedder: {e}")
+                _embed_enabled = False
+    return _embedder
+
+
+# ---------------- Embeddings ----------------
+
+async def embed_texts(texts: List[str]) -> List[List[float]]:
+    """Return embeddings for `texts` using the local ONNX model."""
+    global _embed_enabled
+    if not _embed_enabled or not texts:
+        return []
+    cleaned = [(t or " ")[:_EMBED_MAX_CHARS] for t in texts]
+    loop = asyncio.get_event_loop()
+
+    def _do(batch):
+        emb = _get_embedder()
+        if emb is None:
+            return []
+        vectors = list(emb.embed(batch))
+        return [v.tolist() for v in vectors]
+
+    out: List[List[float]] = []
+    for i in range(0, len(cleaned), _EMBED_BATCH_SIZE):
+        batch = cleaned[i : i + _EMBED_BATCH_SIZE]
+        try:
+            vecs = await loop.run_in_executor(None, _do, batch)
+            if not vecs:
+                _embed_enabled = False
+                return []
+            out.extend(vecs)
+        except Exception as e:
+            print(f"[embed] batch failed, disabling embeddings: {e}")
+            _embed_enabled = False
+            return []
+    return out
+
+
+def cosine(a: List[float], b: List[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        na += x * x
+        nb += y * y
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (math.sqrt(na) * math.sqrt(nb))
+
+
+# ---------------- BM25 (fallback) ----------------
 
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z_0-9]{1,}")
 
 
 def tokenize(text: str) -> List[str]:
-    """Split identifiers on camelCase, snake_case, and non-word chars."""
     if not text:
         return []
     toks = _WORD_RE.findall(text)
     out: List[str] = []
     for t in toks:
-        # split camelCase
         parts = re.findall(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z0-9]+|[A-Z]+|[0-9]+", t)
         for p in parts:
             p = p.lower()
@@ -38,14 +116,12 @@ def tokenize(text: str) -> List[str]:
     return out
 
 
-# ---------- BM25 lite ----------
-
 class BM25Index:
     def __init__(self, docs: List[Dict], k1: float = 1.5, b: float = 0.75):
         self.docs = docs
         self.k1 = k1
         self.b = b
-        self.doc_tokens: List[List[str]] = [tokenize(d.get("text", "")) for d in docs]
+        self.doc_tokens = [tokenize(d.get("text", "")) for d in docs]
         self.doc_len = [len(t) for t in self.doc_tokens]
         self.avgdl = (sum(self.doc_len) / len(self.doc_len)) if self.doc_len else 0
         self.df: Counter = Counter()
@@ -54,51 +130,52 @@ class BM25Index:
                 self.df[w] += 1
         self.N = len(docs) or 1
 
-    def _idf(self, term: str) -> float:
-        n = self.df.get(term, 0)
-        return math.log(1 + (self.N - n + 0.5) / (n + 0.5))
-
     def search(self, query: str, top_k: int = 10) -> List[Tuple[Dict, float]]:
-        q_tokens = tokenize(query)
-        if not q_tokens or not self.docs:
+        q = tokenize(query)
+        if not q or not self.docs:
             return []
         scores = [0.0] * len(self.docs)
-        for term in q_tokens:
-            idf = self._idf(term)
-            for i, tokens in enumerate(self.doc_tokens):
-                if not tokens:
+        for term in q:
+            n = self.df.get(term, 0)
+            idf = math.log(1 + (self.N - n + 0.5) / (n + 0.5))
+            for i, toks in enumerate(self.doc_tokens):
+                if not toks:
                     continue
-                tf = tokens.count(term)
+                tf = toks.count(term)
                 if not tf:
                     continue
                 dl = self.doc_len[i]
                 denom = tf + self.k1 * (1 - self.b + self.b * (dl / (self.avgdl or 1)))
                 scores[i] += idf * (tf * (self.k1 + 1)) / denom
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-        results: List[Tuple[Dict, float]] = []
+        out: List[Tuple[Dict, float]] = []
         for i, s in ranked[:top_k]:
             if s <= 0:
                 break
-            results.append((self.docs[i], s))
-        return results
+            out.append((self.docs[i], s))
+        return out
 
 
-# ---------- Retrieval helpers ----------
+# ---------------- Retrieval ----------------
 
-async def build_search_docs(repo_id: str, db) -> List[Dict]:
-    """Load indexed symbols + files, materialize search docs."""
+def _symbol_text(s: Dict) -> str:
+    return " ".join(filter(None, [
+        s.get("name", ""),
+        s.get("signature", ""),
+        s.get("kind", ""),
+        s.get("file_path", ""),
+        s.get("snippet", ""),
+    ]))
+
+
+async def build_search_docs(repo_id: str, db) -> Tuple[List[Dict], bool]:
+    """Return (docs, has_embeddings). `docs` items include `embedding` when available."""
     docs: List[Dict] = []
+    has_emb = True
     async for s in db.symbols.find({"repo_id": repo_id}, {"_id": 0}):
-        text = " ".join(filter(None, [
-            s.get("name", ""),
-            s.get("signature", ""),
-            s.get("kind", ""),
-            s.get("file_path", ""),
-            s.get("snippet", ""),
-        ]))
         docs.append({
             "type": "symbol",
-            "text": text,
+            "text": _symbol_text(s),
             "path": s["file_path"],
             "start_line": s.get("start_line", 0),
             "end_line": s.get("end_line", 0),
@@ -106,7 +183,10 @@ async def build_search_docs(repo_id: str, db) -> List[Dict]:
             "kind": s.get("kind"),
             "snippet": s.get("snippet", "")[:800],
             "language": s.get("language"),
+            "embedding": s.get("embedding"),
         })
+        if not s.get("embedding"):
+            has_emb = False
     async for f in db.files.find({"repo_id": repo_id, "is_binary": False}, {"_id": 0}):
         docs.append({
             "type": "file",
@@ -116,14 +196,33 @@ async def build_search_docs(repo_id: str, db) -> List[Dict]:
             "end_line": f.get("line_count", 1),
             "snippet": "",
             "language": f.get("language"),
+            "embedding": None,
         })
-    return docs
+    return docs, has_emb and len(docs) > 0
 
 
 async def semantic_search(repo_id: str, query: str, db, top_k: int = 10) -> List[Dict]:
-    docs = await build_search_docs(repo_id, db)
-    index = BM25Index(docs)
-    results = index.search(query, top_k=top_k)
+    docs, has_emb = await build_search_docs(repo_id, db)
+    ranked: List[Tuple[Dict, float]] = []
+
+    if has_emb and _embed_enabled:
+        q_emb_list = await embed_texts([query])
+        if q_emb_list:
+            q_emb = q_emb_list[0]
+            scored = []
+            for d in docs:
+                if d.get("embedding"):
+                    scored.append((d, cosine(q_emb, d["embedding"])))
+                else:
+                    scored.append((d, 0.0))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            ranked = [(d, s) for d, s in scored if s > 0.15][:top_k]
+
+    if not ranked:
+        # BM25 fallback
+        idx = BM25Index(docs)
+        ranked = idx.search(query, top_k=top_k)
+
     return [
         {
             "path": d["path"],
@@ -133,13 +232,13 @@ async def semantic_search(repo_id: str, query: str, db, top_k: int = 10) -> List
             "name": d.get("name"),
             "language": d.get("language"),
             "snippet": d.get("snippet", ""),
-            "score": round(score, 3),
+            "score": round(float(score), 3),
         }
-        for d, score in results
+        for d, score in ranked
     ]
 
 
-# ---------- Chat ----------
+# ---------------- Chat ----------------
 
 REPO_SYSTEM_TEMPLATE = """You are CodeGanak, a senior software engineer AI who has deeply
 studied the repository "{repo_name}" ({framework}, primary language {language}).
@@ -183,14 +282,8 @@ async def chat_stream(
     history: List[Dict],
     db,
 ) -> AsyncIterator[Dict]:
-    """Async generator that yields event dicts:
-        {"type": "citations", "data": [...]}
-        {"type": "delta", "data": "text"}
-        {"type": "done"}
-    """
     repo_id = repo["id"]
 
-    # 1. Retrieve top-K chunks for the current question.
     hits = await semantic_search(repo_id, message, db, top_k=8)
     citations = [
         {"path": h["path"], "start_line": h["start_line"], "end_line": h["end_line"]}
@@ -205,7 +298,6 @@ async def chat_stream(
         language=repo.get("primary_language") or "mixed",
     )
 
-    # Fold prior chat history into the user turn to keep session_id stable.
     hist_text = ""
     for m in history[-6:]:
         hist_text += f"\n\n[{m['role']}] {m['content']}"
@@ -231,7 +323,6 @@ async def chat_stream(
 
 
 async def generate_documentation(repo: Dict, db) -> str:
-    """Ask Claude to produce a README-style overview using indexed context."""
     hits = await semantic_search(
         repo["id"],
         "architecture overview main entry points routes models",

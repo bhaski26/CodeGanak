@@ -21,7 +21,15 @@ export default function Login() {
       const { data } = await api.post("/auth/login", form);
       setAuth(data.access_token, data.user);
       toast.success(`Welcome back, ${data.user.name}`);
-      navigate("/dashboard");
+      // handle pending invite (from /invite/:token deep-link)
+      let pending = null;
+      try {
+        pending = localStorage.getItem("codeganak.pending_invite");
+        if (pending) localStorage.removeItem("codeganak.pending_invite");
+      } catch {
+        // no-op
+      }
+      navigate(pending ? `/invite/${pending}` : "/dashboard");
     } catch (err) {
       const detail =
         err?.response?.data?.detail || err?.message || "Login failed";

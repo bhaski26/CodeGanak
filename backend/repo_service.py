@@ -17,8 +17,9 @@ from db import db
 from models import Repository, RepoFile, CodeSymbol, now_iso
 from parser import (
     walk_repository, read_text, detect_language, detect_framework,
-    extract_symbols,
+    extract_symbols, extract_imports, resolve_import,
 )
+from ai_service import embed_texts, EMBEDDING_DIM
 
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/app/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -87,21 +88,25 @@ async def clone_github_repo(repo_id: str, github_url: str) -> Path:
 
 
 async def index_repository(repo_id: str, root: Path) -> None:
-    """Walk repo, extract files & symbols, update stats."""
+    """Walk repo, extract files, symbols and imports, then embed symbols."""
     await _update_repo(repo_id, status="parsing")
 
     # clean any previous index
     await db.files.delete_many({"repo_id": repo_id})
     await db.symbols.delete_many({"repo_id": repo_id})
+    await db.imports.delete_many({"repo_id": repo_id})
 
-    files_batch = []
-    symbols_batch = []
+    files_batch: list = []
+    symbols_batch: list = []
     lang_counts: dict = {}
     total_bytes = 0
     file_count = 0
     function_count = 0
     class_count = 0
     api_count = 0
+
+    # Two-pass to allow resolve_import to see the full path set.
+    parsed_files: list = []  # (rel, language, source)
 
     for path in walk_repository(root):
         rel = str(path.relative_to(root))
@@ -128,41 +133,61 @@ async def index_repository(repo_id: str, root: Path) -> None:
 
         if language and source:
             lang_counts[language] = lang_counts.get(language, 0) + 1
-            syms = extract_symbols(source, language, rel)
-            for s in syms:
-                if s["kind"] == "function":
-                    function_count += 1
-                elif s["kind"] == "class":
-                    class_count += 1
-                elif s["kind"] == "route":
-                    api_count += 1
-                sym_doc = CodeSymbol(
-                    repo_id=repo_id,
-                    file_path=rel,
-                    language=language,
-                    **s,
-                ).model_dump()
-                symbols_batch.append(sym_doc)
-
-        # Flush in chunks to keep memory reasonable
-        if len(files_batch) >= 500:
-            await db.files.insert_many(files_batch)
-            files_batch = []
-        if len(symbols_batch) >= 500:
-            await db.symbols.insert_many(symbols_batch)
-            symbols_batch = []
+            parsed_files.append((rel, language, source))
 
     if files_batch:
         await db.files.insert_many(files_batch)
+
+    all_paths = {f["path"] for f in files_batch}
+
+    imports_batch: list = []
+    for rel, language, source in parsed_files:
+        syms = extract_symbols(source, language, rel)
+        for s in syms:
+            if s["kind"] == "function":
+                function_count += 1
+            elif s["kind"] == "class":
+                class_count += 1
+            elif s["kind"] == "route":
+                api_count += 1
+            sym_doc = CodeSymbol(
+                repo_id=repo_id,
+                file_path=rel,
+                language=language,
+                **s,
+            ).model_dump()
+            symbols_batch.append(sym_doc)
+
+        for mod in extract_imports(source, language):
+            target = resolve_import(rel, mod, language, all_paths)
+            imports_batch.append({
+                "id": __import__("uuid").uuid4().hex,
+                "repo_id": repo_id,
+                "source_path": rel,
+                "raw": mod,
+                "target_path": target,
+                "target_module": mod,
+                "is_external": target is None,
+            })
+        # flush occasionally
+        if len(symbols_batch) >= 500:
+            await db.symbols.insert_many(symbols_batch)
+            symbols_batch = []
+        if len(imports_batch) >= 1000:
+            await db.imports.insert_many(imports_batch)
+            imports_batch = []
+
     if symbols_batch:
         await db.symbols.insert_many(symbols_batch)
+    if imports_batch:
+        await db.imports.insert_many(imports_batch)
 
     framework, pm = detect_framework(root, lang_counts)
     primary = max(lang_counts.items(), key=lambda kv: kv[1])[0] if lang_counts else None
 
     await _update_repo(
         repo_id,
-        status="ready",
+        status="ready",                    # BM25 search/chat immediately available
         languages=lang_counts,
         primary_language=primary,
         framework=framework,
@@ -173,8 +198,47 @@ async def index_repository(repo_id: str, root: Path) -> None:
         api_count=api_count,
         total_bytes=total_bytes,
         root_path=str(root),
+        embedding_ready=False,
         error=None,
     )
+
+    # Kick off embeddings in the background so the UI is usable immediately.
+    asyncio.create_task(_embed_symbols(repo_id))
+
+
+async def _embed_symbols(repo_id: str) -> None:
+    """Background pass: batch-embed indexed symbols and persist vectors."""
+    try:
+        symbol_docs = await db.symbols.find({"repo_id": repo_id}, {"_id": 0}).to_list(15000)
+        if not symbol_docs:
+            return
+        # cap to keep large monorepos feasible on CPU
+        cap = 2500
+        symbol_docs = symbol_docs[:cap]
+        texts = [
+            " ".join(filter(None, [
+                s.get("kind", ""), s.get("name", ""), s.get("signature", ""),
+                s.get("file_path", ""), s.get("snippet", ""),
+            ]))
+            for s in symbol_docs
+        ]
+        embeddings = await embed_texts(texts)
+        if not embeddings or len(embeddings) != len(symbol_docs):
+            return
+        from pymongo import UpdateOne
+        ops = [
+            UpdateOne(
+                {"id": s["id"]},
+                {"$set": {"embedding": emb, "embedding_dim": len(emb)}},
+            )
+            for s, emb in zip(symbol_docs, embeddings)
+        ]
+        for i in range(0, len(ops), 500):
+            await db.symbols.bulk_write(ops[i : i + 500], ordered=False)
+        await _update_repo(repo_id, embedding_ready=True)
+        print(f"[embed] repo {repo_id}: {len(embeddings)} vectors written")
+    except Exception as e:
+        print(f"[embed] repo {repo_id} failed: {e}")
 
 
 async def import_zip(repo_id: str, upload_bytes: bytes) -> None:

@@ -328,3 +328,112 @@ def detect_framework(root: Path, languages: Dict[str, int]) -> Tuple[Optional[st
         top = max(languages.items(), key=lambda kv: kv[1])[0]
         framework = top.capitalize()
     return framework, pm
+
+
+# ------------------ Import extraction ------------------
+
+_PY_IMPORT_RE = re.compile(
+    r"^\s*(?:from\s+([\w\.]+)\s+import\s+.+|import\s+([\w\.]+))",
+    re.MULTILINE,
+)
+_JS_IMPORT_RE = re.compile(
+    r"""(?:^|\s)import\s+(?:[^'"]*from\s+)?['"]([^'"]+)['"]""",
+    re.MULTILINE,
+)
+_JS_REQUIRE_RE = re.compile(
+    r"""require\(\s*['"]([^'"]+)['"]\s*\)""",
+    re.MULTILINE,
+)
+_JAVA_IMPORT_RE = re.compile(r"^\s*import\s+([\w\.\*]+)\s*;", re.MULTILINE)
+_GO_IMPORT_RE = re.compile(r"""import\s+(?:\(\s*([\s\S]*?)\s*\)|"([^"]+)")""", re.MULTILINE)
+_RB_REQUIRE_RE = re.compile(r"""^\s*require(?:_relative)?\s+['"]([^'"]+)['"]""", re.MULTILINE)
+
+
+def extract_imports(source: str, language: str) -> List[str]:
+    """Return raw module strings referenced by import statements."""
+    out: List[str] = []
+    if not source:
+        return out
+    if language == "python":
+        for m in _PY_IMPORT_RE.finditer(source):
+            mod = m.group(1) or m.group(2)
+            if mod:
+                out.append(mod)
+    elif language in ("javascript", "typescript"):
+        for m in _JS_IMPORT_RE.finditer(source):
+            out.append(m.group(1))
+        for m in _JS_REQUIRE_RE.finditer(source):
+            out.append(m.group(1))
+    elif language in ("java", "kotlin"):
+        for m in _JAVA_IMPORT_RE.finditer(source):
+            out.append(m.group(1))
+    elif language == "go":
+        for m in _GO_IMPORT_RE.finditer(source):
+            block = m.group(1)
+            single = m.group(2)
+            if single:
+                out.append(single)
+            elif block:
+                for line in block.splitlines():
+                    line = line.strip().strip('"')
+                    if line and not line.startswith("//"):
+                        out.append(line.split()[-1].strip('"'))
+    elif language == "ruby":
+        for m in _RB_REQUIRE_RE.finditer(source):
+            out.append(m.group(1))
+    # dedupe preserving order
+    seen = set()
+    result = []
+    for m in out:
+        if m and m not in seen:
+            seen.add(m)
+            result.append(m)
+    return result
+
+
+def resolve_import(source_rel_path: str, module: str, language: str, all_paths: set) -> Optional[str]:
+    """Best-effort mapping of a module string to a file path inside the repo."""
+    if not module:
+        return None
+    src_dir = os.path.dirname(source_rel_path)
+
+    def _try(candidate: str) -> Optional[str]:
+        candidate = candidate.replace("\\", "/").lstrip("./")
+        # normalize
+        if candidate in all_paths:
+            return candidate
+        # with extensions
+        for ext in (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"):
+            p = candidate + ext
+            if p in all_paths:
+                return p
+            p = f"{candidate}/index{ext}"
+            if p in all_paths:
+                return p
+        return None
+
+    if language in ("javascript", "typescript"):
+        # relative imports only resolve to repo paths
+        if module.startswith("."):
+            rel = os.path.normpath(os.path.join(src_dir, module))
+            return _try(rel.replace(os.sep, "/"))
+        return None
+
+    if language == "python":
+        # relative "from . import x" -> src_dir; else map dots to slashes
+        if module.startswith("."):
+            depth = len(module) - len(module.lstrip("."))
+            base = src_dir
+            for _ in range(depth - 1):
+                base = os.path.dirname(base)
+            rest = module.lstrip(".").replace(".", "/")
+            rel = os.path.join(base, rest) if rest else base
+            return _try(rel.replace(os.sep, "/"))
+        rel = module.replace(".", "/")
+        return _try(rel)
+
+    if language in ("java", "kotlin"):
+        rel = module.replace(".", "/").rstrip("*/")
+        return _try(rel + ".java") or _try(rel + ".kt") or _try(rel)
+
+    return None

@@ -15,6 +15,8 @@ import {
   ArrowLeft,
   ExternalLink,
   RefreshCw,
+  Sparkles,
+  Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +25,7 @@ import { Progress } from "@/components/ui/progress";
 import AppHeader from "@/components/AppHeader";
 import FileTree from "@/components/FileTree";
 import ChatPanel from "@/components/ChatPanel";
+import GraphView from "@/components/GraphView";
 import { api } from "@/lib/api";
 import { REPO } from "@/constants/testIds";
 
@@ -48,6 +51,7 @@ export default function RepositoryDetail({ onOpenCommand }) {
   const [genDocsBusy, setGenDocsBusy] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [searchMode, setSearchMode] = useState(null);
   const [searchBusy, setSearchBusy] = useState(false);
 
   const loadRepo = async () => {
@@ -101,6 +105,7 @@ export default function RepositoryDetail({ onOpenCommand }) {
         limit: 20,
       });
       setSearchResults(data.results || []);
+      setSearchMode(data.mode || null);
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Search failed");
     } finally {
@@ -172,6 +177,11 @@ export default function RepositoryDetail({ onOpenCommand }) {
             )}
           </div>
           <div className="flex items-center gap-3">
+            {repo.embedding_ready && (
+              <span className="text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-sm bg-accent/10 text-accent border border-accent/30 hidden sm:inline-flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5" /> vectors
+              </span>
+            )}
             <span
               className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded-sm ${
                 repo.status === "ready"
@@ -229,6 +239,9 @@ export default function RepositoryDetail({ onOpenCommand }) {
                 </TriggerTab>
                 <TriggerTab value="files" testid={REPO.tabFiles} icon={FileCode2}>
                   Files
+                </TriggerTab>
+                <TriggerTab value="graph" testid="repo-tab-graph" icon={Share2}>
+                  Graph
                 </TriggerTab>
                 <TriggerTab value="chat" testid={REPO.tabChat} icon={MessageSquare}>
                   Chat
@@ -349,6 +362,10 @@ export default function RepositoryDetail({ onOpenCommand }) {
               </TabsContent>
 
               {/* Chat */}
+              <TabsContent value="graph" className="mt-6">
+                <GraphView repo={repo} />
+              </TabsContent>
+
               <TabsContent value="chat" className="mt-6">
                 <div className="border border-border/60 rounded-md overflow-hidden h-[75vh]">
                   <ChatPanel repo={repo} />
@@ -380,6 +397,13 @@ export default function RepositoryDetail({ onOpenCommand }) {
                 </form>
 
                 <div className="mt-6 space-y-2">
+                  {searchMode && searchResults.length > 0 && (
+                    <div className="tiny-label !text-[9px] text-accent">
+                      {searchMode === "embeddings"
+                        ? "· ranked by semantic embedding similarity"
+                        : "· ranked by keyword relevance (embeddings still processing)"}
+                    </div>
+                  )}
                   {searchResults.length === 0 && !searchBusy && (
                     <div className="text-sm text-muted-foreground text-center py-16 border border-dashed border-border rounded-md">
                       Enter a query above to find relevant files, functions and routes.

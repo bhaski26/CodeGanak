@@ -34,7 +34,14 @@ export default function Register() {
       });
       setAuth(data.access_token, data.user);
       toast.success(`Welcome, ${data.user.name}`);
-      navigate("/dashboard");
+      let pending = null;
+      try {
+        pending = localStorage.getItem("codeganak.pending_invite");
+        if (pending) localStorage.removeItem("codeganak.pending_invite");
+      } catch {
+        // no-op
+      }
+      navigate(pending ? `/invite/${pending}` : "/dashboard");
     } catch (err) {
       const detail =
         err?.response?.data?.detail || err?.message || "Registration failed";
