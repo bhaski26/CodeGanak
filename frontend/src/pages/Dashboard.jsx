@@ -297,6 +297,7 @@ export default function Dashboard({ onOpenCommand }) {
                     <div className="mt-5 flex items-center justify-between">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-[10px] font-mono uppercase tracking-widest ${meta.tone}`}
+                        data-testid="repo-status-badge"
                       >
                         <span className="w-1 h-1 rounded-full bg-current" />
                         {meta.label}
