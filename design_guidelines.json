@@ -1,0 +1,146 @@
+{
+  "theme_strategy": {
+    "name": "Obsidian & Cyan (Archetype: High-Contrast Swiss + Premium Tech)",
+    "description": "A deeply professional, dark-mode first design tailored for elite developers. Combines the stark, highly legible structure of Swiss design (Linear, Vercel) with premium 'Old Money Tech' textures (subtle grain, glassmorphism, 1px crisp borders). Pure void backgrounds accented by electric blue and laser cyan for focus and AI intelligence.",
+    "base_mode": "dark"
+  },
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Chivo, sans-serif",
+        "weight": "font-bold to font-black",
+        "tracking": "tracking-tight to tracking-tighter"
+      },
+      "body": {
+        "family": "IBM Plex Sans, sans-serif",
+        "weight": "font-normal to font-medium",
+        "tracking": "tracking-normal"
+      },
+      "mono": {
+        "family": "IBM Plex Mono, monospace",
+        "weight": "font-medium",
+        "usage": "Code viewers, overline labels, file trees, line numbers",
+        "casing": "uppercase for labels (tracking-[0.2em])"
+      }
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter leading-tight",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-snug",
+      "h3": "text-xl sm:text-2xl leading-snug",
+      "h4": "text-lg sm:text-xl",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm",
+      "tiny_label": "text-xs uppercase tracking-[0.2em] font-medium"
+    },
+    "rules": [
+      "NEVER use generic fonts (Inter, Roboto) for headings.",
+      "Always left-align dense text, forms, and code blocks.",
+      "Headlines > 32px MUST use tight letter spacing.",
+      "NEVER exceed text-6xl for Hero headings."
+    ]
+  },
+  "colors": {
+    "variables": {
+      "background": "0 0% 2% (Deep Void Black #050505)",
+      "foreground": "0 0% 98% (Off-White #FAFAFA)",
+      "card": "0 0% 7% (Matte Graphite #121212)",
+      "card-foreground": "0 0% 98%",
+      "popover": "0 0% 5% (Darker Graphite)",
+      "popover-foreground": "0 0% 98%",
+      "primary": "217 91% 60% (Electric Blue #3B82F6 - Primary actions)",
+      "primary-foreground": "0 0% 100%",
+      "secondary": "0 0% 12% (Neutral Surface)",
+      "secondary-foreground": "0 0% 98%",
+      "muted": "0 0% 11%",
+      "muted-foreground": "0 0% 64% (Dimmed Text #A1A1AA)",
+      "accent": "184 100% 50% (Laser Cyan #00E5FF - AI hits/citations)",
+      "accent-foreground": "0 0% 5%",
+      "border": "0 0% 15% (Crisp outline #262626)",
+      "input": "0 0% 15%",
+      "ring": "217 91% 60%",
+      "radius": "0.3rem (Sharp, technical look)"
+    },
+    "rules": [
+      "Tinted Neutral Rule: Greys should subtly lean cool.",
+      "No full-screen gradients. Keep backgrounds solid to allow content to pop.",
+      "Limit the use of Primary colors strictly to high-priority CTAs (Login, Import Repo, Run Search)."
+    ]
+  },
+  "visual_enhancers": {
+    "surfaces": [
+      {
+        "name": "Crystal Glassmorphism",
+        "usage": "Command Palette (Cmd+K), Sticky Navbars, Floating AI Chat Overlays",
+        "classes": "backdrop-blur-2xl bg-black/60 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-saturate-150"
+      },
+      {
+        "name": "Grid Borders",
+        "usage": "Workspace Dashboards, Repository Metric Cards",
+        "classes": "border-collapse border border-border/40 hover:border-white/20 transition-colors"
+      },
+      {
+        "name": "Technical Inset",
+        "usage": "Code Viewer Window, Terminal/Logs",
+        "classes": "bg-[#080808] border border-border/60 shadow-inner rounded-md"
+      }
+    ],
+    "textures": "Add subtle CSS noise/grain (opacity 2-3%) over the main background to break digital flatness."
+  },
+  "spacing_and_layouts": {
+    "philosophy": "Generous Spacing (Tailwind p-6, p-8, p-12) for marketing; High Density for Code View.",
+    "grids": {
+      "dashboard": "Base grid-cols-1 md:grid-cols-3 lg:grid-cols-4 with gap-4 or gap-6.",
+      "repo_detail": "Bento Grid Mode B (High Density). File tree (col-span-1), Main Editor/Chat (col-span-3)."
+    },
+    "containers": "Any container with a border MUST have internal padding (e.g., p-6) to prevent text collision."
+  },
+  "components": {
+    "buttons": "Pill-shaped or slightly rounded (rounded-md). Always explicitly set text color on hover (e.g., hover:bg-primary/90 hover:text-white).",
+    "cards": "Cardless or minimal cards. Flat background, 1px subtle border, no shadow by default. On hover: -translate-y-[1px], border-white/20, shadow-lg.",
+    "command_palette": "Use cmdk. Must feature Glassmorphism surface, sharp typography, precise keyboard navigation cues (e.g., showing ⌘K).",
+    "file_tree": "Dense spacing (py-1), small font size, left-aligned, precise mono icons for file types.",
+    "code_viewer": "Monospace, custom syntax highlighting using Electric Blue and Cyan accents. Sticky header for file path.",
+    "tabs": "Override Shadcn fixed height (h-9 to h-auto). Transparent background, bottom border (border-b border-border), active state highlighted with primary bottom border.",
+    "chat_panel": "Floating or docked side panel. User messages in muted surface, AI messages distinct with subtle primary/accent border left."
+  },
+  "motion": {
+    "transitions": "Specific properties only (e.g., transition-colors duration-200 ease). NEVER use 'transition-all'.",
+    "hover_states": "Interactive elements must lighten background or border.",
+    "entrances": "Staggered entrances for dashboard repositories and file tree nodes (framer-motion).",
+    "focus": "High contrast rings (focus:ring-2 focus:ring-primary focus:outline-none)."
+  },
+  "accessibility": {
+    "contrast": "Minimum 4.5:1 for normal text, 3:1 for large text. Ensure text over images/glass has text-shadow if necessary.",
+    "motion": "Respect prefers-reduced-motion queries.",
+    "testing": "All interactive/key elements MUST include 'data-testid' (e.g., data-testid='import-repo-button')."
+  },
+  "media_and_icons": {
+    "icon_library": "lucide-react (General) and @phosphor-icons/react (Technical/Developer tools)",
+    "images": [
+      {
+        "category": "Hero Background",
+        "url": "https://images.pexels.com/photos/26765065/pexels-photo-26765065.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Abstract binary code matrix. Apply CSS grayscale/hue-rotate to match blue/cyan theme.",
+        "placement": "Landing page hero section (bg-black/80 overlay)."
+      },
+      {
+        "category": "Feature Section Visual",
+        "url": "https://images.pexels.com/photos/8134609/pexels-photo-8134609.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Dark hallway with digital glowing numbers (cyberpunk vibe).",
+        "placement": "Semantic Search or Architecture Visualization feature card."
+      }
+    ],
+    "rules": "Max height 80vh on mobile. NEVER use placeholder URLs. NEVER use completely transparent backgrounds under text."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "DO NOT output 'AI slop' aesthetic. Avoid generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy and glassmorphism (12-24px blur).",
+    "Dark colors look good independently. DO NOT use dark colors as gradients.",
+    "NEVER apply `transition: all`. Use transitions for specific interactive elements excluding transforms.",
+    "NEVER center align the app container in index.css (no .App { text-align: center; }).",
+    "NEVER use AI assistant Emoji characters (🤖🧠💭💡) for icons. Use clean SVG icons.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Every interaction needs micro-animations (hover states, focus rings, scale on click).",
+    "Use `sonner` for toast notifications. DO NOT use raw HTML components for advanced interactions."
+  ]
+}
