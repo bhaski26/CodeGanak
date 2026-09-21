@@ -1,5 +1,6 @@
 """CodeGanak backend API — auth, workspaces, repo import/index, chat, search, graphs."""
 from __future__ import annotations
+from fastapi.openapi.docs import get_redoc_html
 
 import asyncio
 import json
@@ -45,9 +46,22 @@ from workspace_service import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("codeganak")
 
-app = FastAPI(title="CodeGanak API", version="0.2.0")
+app = FastAPI(
+    title="CodeGanak API",
+    version="0.2.0",
+    redoc_url=None,
+)
 api = APIRouter(prefix="/api")
 
+# ------------------ Redoc -----------------
+
+@app.get("/redoc", include_in_schema=False)
+async def custom_redoc():
+    return get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=app.title + " - ReDoc",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js",
+    )
 
 # ------------------ Health ------------------
 
