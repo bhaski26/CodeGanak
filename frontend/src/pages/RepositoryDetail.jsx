@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -54,7 +54,7 @@ export default function RepositoryDetail({ onOpenCommand }) {
   const [searchMode, setSearchMode] = useState(null);
   const [searchBusy, setSearchBusy] = useState(false);
 
-  const loadRepo = async () => {
+  const loadRepo = useCallback(async () => {
     try {
       const { data } = await api.get(`/repositories/${repoId}`);
       setRepo(data);
@@ -62,29 +62,35 @@ export default function RepositoryDetail({ onOpenCommand }) {
       toast.error("Repository not found");
       navigate("/dashboard");
     }
-  };
+  }, [repoId, navigate]);
 
   useEffect(() => {
     loadRepo();
-     
-  }, [repoId]);
+  }, [loadRepo]);
 
   // poll while not ready
   useEffect(() => {
     if (!repo) return;
     if (["ready", "failed"].includes(repo.status)) return;
+
     const t = setInterval(loadRepo, 3000);
     return () => clearInterval(t);
-     
-  }, [repo?.status]);
+  }, [repo, loadRepo]);
 
   // load tree + stats when ready
   useEffect(() => {
     if (repo?.status !== "ready") return;
-    api.get(`/repositories/${repoId}/tree`).then((r) => setTree(r.data)).catch(() => {});
-    api.get(`/repositories/${repoId}/stats`).then((r) => setStats(r.data)).catch(() => {});
-     
-  }, [repo?.status]);
+
+    api
+      .get(`/repositories/${repoId}/tree`)
+      .then((r) => setTree(r.data))
+      .catch(() => {});
+
+    api
+      .get(`/repositories/${repoId}/stats`)
+      .then((r) => setStats(r.data))
+      .catch(() => {});
+  }, [repo?.status, repoId]);
 
   useEffect(() => {
     if (!selectedPath) return;

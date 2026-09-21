@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -61,16 +61,19 @@ export default function WorkspaceSettings({ onOpenCommand }) {
   const myRole = ws?.role || "member";
   const canManage = myRole === "owner" || myRole === "admin";
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
+
     try {
       await refresh();
+
       const [{ data: m }, { data: i }] = await Promise.all([
         api.get(`/workspaces/${workspaceId}/members`),
         canManage
           ? api.get(`/workspaces/${workspaceId}/invites`)
           : Promise.resolve({ data: [] }),
       ]);
+
       setMembers(m || []);
       setInvites(i || []);
     } catch (err) {
@@ -78,12 +81,11 @@ export default function WorkspaceSettings({ onOpenCommand }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [refresh, workspaceId, canManage]);
 
   useEffect(() => {
     loadAll();
-     
-  }, [workspaceId]);
+  }, [loadAll]);
 
   useEffect(() => {
     if (ws) setName(ws.name);
