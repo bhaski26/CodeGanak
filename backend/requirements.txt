@@ -25,7 +25,7 @@ numpy>=1.26.0
 python-multipart>=0.0.9
 jq>=1.6.0
 typer>=0.9.0
-emergentintegrations==0.2.0
+git+https://github.com/emergentbase/emergentintegrations.git
 fastembed==0.8.0
 flatbuffers==25.12.19
 loguru==0.7.3
