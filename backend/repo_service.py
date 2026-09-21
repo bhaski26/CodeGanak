@@ -21,7 +21,7 @@ from parser import (
 )
 from ai_service import embed_texts, EMBEDDING_DIM
 
-UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/app/uploads"))
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "./uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 _GITHUB_RE = re.compile(r"^https?://github\.com/([^/]+)/([^/#?\s]+)")
